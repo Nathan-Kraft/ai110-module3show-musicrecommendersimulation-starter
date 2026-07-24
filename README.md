@@ -70,6 +70,7 @@ Genre outweighs mood so a user's core genre identity still surfaces even when th
 
 - **Genre/mood dominance**: because genre and mood together make up 60% of the score, a user profile with an unusual genre/mood combination (e.g., "ambient" + "intense", which doesn't appear in the catalog) will score every song lower across the board, making recommendations feel flatter and less differentiated for that user.
 - **Catalog imbalance**: the sample catalog has only 10 songs and just 1–2 per genre/mood combination. Users whose taste matches an underrepresented genre (e.g., jazz, ambient) have far fewer candidates to be recommended, regardless of how well the scoring works.
+  - **Observed example**: in the Diverse Profiles Tests above, "Storm Runner" lands in 1st place for several very different profiles (Taste Profile, Conflicted Energy/Mood Edge Case, and near the top for others). This isn't a weighting bug — Storm Runner happens to be one of only two "rock" songs and holds the catalog's highest energy (0.91) and tempo (152 bpm). Any profile wanting high energy, fast tempo, or an "intense" vibe scores it well on `energy_closeness`/`tempo_closeness` alone, and it also picks up genre/mood match bonuses for rock/intense seekers, letting it stack nearly every weighted term at once. With only one song sitting at that extreme, there's no competing track nearby to challenge it. A larger, more evenly distributed catalog would likely reduce this effect.
 - **Assumed tempo range**: the 40–200 bpm normalization range is a judgment call. If the actual catalog skews narrower (as it does here, ~60–152 bpm), tempo_closeness scores compress toward the high end and the term contributes less differentiation than its 0.10 weight suggests.
 - **No personalization over time**: the system has no memory of past recommendations or feedback, so it will keep suggesting the same top songs to the same user profile indefinitely, and can't learn from what a user actually likes versus what they stated in their profile.
 
@@ -147,13 +148,198 @@ Top recommendations:
 
 ---
 
+## Diverse Profiles Tests
+
+Ran the `Recommender` (OOP) class against six sample `UserProfile`s defined in `main.py`, including two deliberate edge cases where a user's stated preferences pull the scoring in different directions.
+
+### Taste Profile (genre=rock, mood=intense, energy=0.65, tempo=140, likes_acoustic=False)
+
+```
+1. Storm Runner (Voltline) - Score: 93/100
+   - matches your favorite genre (rock)
+   - matches your favorite mood (intense)
+   - tempo (152.0 bpm) is close to what you want (140 bpm)
+   - has the non-acoustic energy you tend to like
+
+2. Gym Hero (Max Pulse) - Score: 58/100
+   - matches your favorite mood (intense)
+   - tempo (132.0 bpm) is close to what you want (140 bpm)
+   - has the non-acoustic energy you tend to like
+
+3. Habana Nights (Sol y Sombra) - Score: 34/100
+   - energy (0.68) is close to what you want (0.65)
+   - has the non-acoustic energy you tend to like
+
+4. Night Drive Loop (Neon Echo) - Score: 34/100
+   - energy (0.75) is close to what you want (0.65)
+   - has the non-acoustic energy you tend to like
+
+5. Warehouse 88 (Kilo Frame) - Score: 34/100
+   - tempo (126.0 bpm) is close to what you want (140 bpm)
+   - has the non-acoustic energy you tend to like
+```
+
+### High-Energy Pop Fan (genre=High-Energy Pop, mood=euphoric, energy=0.9, tempo=128, likes_acoustic=False)
+
+```
+1. Warehouse 88 (Kilo Frame) - Score: 64/100
+   - matches your favorite mood (euphoric)
+   - energy (0.88) is close to what you want (0.9)
+   - tempo (126.0 bpm) is close to what you want (128 bpm)
+   - has the non-acoustic energy you tend to like
+
+2. Gym Hero (Max Pulse) - Score: 39/100
+   - energy (0.93) is close to what you want (0.9)
+   - tempo (132.0 bpm) is close to what you want (128 bpm)
+   - has the non-acoustic energy you tend to like
+
+3. Storm Runner (Voltline) - Score: 37/100
+   - energy (0.91) is close to what you want (0.9)
+   - tempo (152.0 bpm) is close to what you want (128 bpm)
+   - has the non-acoustic energy you tend to like
+
+4. Sunrise City (Neon Echo) - Score: 36/100
+   - energy (0.82) is close to what you want (0.9)
+   - tempo (118.0 bpm) is close to what you want (128 bpm)
+   - has the non-acoustic energy you tend to like
+
+5. Fever Dream (Static Cathedral) - Score: 36/100
+   - energy (0.97) is close to what you want (0.9)
+   - has the non-acoustic energy you tend to like
+```
+
+### Chill Lofi Fan (genre=Chill Lofi, mood=relaxed, energy=0.25, tempo=75, likes_acoustic=True)
+
+```
+1. Coffee Shop Stories (Slow Stereo) - Score: 61/100
+   - matches your favorite mood (relaxed)
+   - energy (0.37) is close to what you want (0.25)
+   - tempo (90.0 bpm) is close to what you want (75 bpm)
+   - has an acoustic feel you tend to like
+
+2. Glass Cathedral (Aria Ninwe) - Score: 38/100
+   - energy (0.25) is close to what you want (0.25)
+   - tempo (58.0 bpm) is close to what you want (75 bpm)
+   - has an acoustic feel you tend to like
+
+3. Spacewalk Thoughts (Orbit Bloom) - Score: 38/100
+   - energy (0.28) is close to what you want (0.25)
+   - tempo (60.0 bpm) is close to what you want (75 bpm)
+   - has an acoustic feel you tend to like
+
+4. Rust Belt Ghosts (Hollow Creek) - Score: 37/100
+   - energy (0.3) is close to what you want (0.25)
+   - tempo (68.0 bpm) is close to what you want (75 bpm)
+   - has an acoustic feel you tend to like
+
+5. Library Rain (Paper Lanterns) - Score: 36/100
+   - energy (0.35) is close to what you want (0.25)
+   - tempo (72.0 bpm) is close to what you want (75 bpm)
+   - has an acoustic feel you tend to like
+```
+
+### Deep Intense Rock Fan (genre=Deep Intense Rock, mood=intense, energy=0.8, tempo=140, likes_acoustic=False)
+
+```
+1. Gym Hero (Max Pulse) - Score: 61/100
+   - matches your favorite mood (intense)
+   - energy (0.93) is close to what you want (0.8)
+   - tempo (132.0 bpm) is close to what you want (140 bpm)
+   - has the non-acoustic energy you tend to like
+
+2. Storm Runner (Voltline) - Score: 61/100
+   - matches your favorite mood (intense)
+   - energy (0.91) is close to what you want (0.8)
+   - tempo (152.0 bpm) is close to what you want (140 bpm)
+   - has the non-acoustic energy you tend to like
+
+3. Warehouse 88 (Kilo Frame) - Score: 37/100
+   - energy (0.88) is close to what you want (0.8)
+   - tempo (126.0 bpm) is close to what you want (140 bpm)
+   - has the non-acoustic energy you tend to like
+
+4. Sunrise City (Neon Echo) - Score: 36/100
+   - energy (0.82) is close to what you want (0.8)
+   - tempo (118.0 bpm) is close to what you want (140 bpm)
+   - has the non-acoustic energy you tend to like
+
+5. Recess (Bubblegum Static) - Score: 36/100
+   - energy (0.8) is close to what you want (0.8)
+   - has the non-acoustic energy you tend to like
+```
+
+### Conflicted Energy/Mood Edge Case (genre=rock, mood=sad, energy=0.95, tempo=170, likes_acoustic=True)
+
+```
+1. Storm Runner (Voltline) - Score: 64/100
+   - matches your favorite genre (rock)
+   - energy (0.91) is close to what you want (0.95)
+   - tempo (152.0 bpm) is close to what you want (170 bpm)
+
+2. Broken Halo (Marlowe Vance) - Score: 43/100
+   - matches your favorite mood (sad)
+   - has an acoustic feel you tend to like
+
+3. Riot Gear (Vex Culprit) - Score: 30/100
+   - energy (0.95) is close to what you want (0.95)
+   - tempo (175.0 bpm) is close to what you want (170 bpm)
+
+4. Fever Dream (Static Cathedral) - Score: 30/100
+   - energy (0.97) is close to what you want (0.95)
+   - tempo (168.0 bpm) is close to what you want (170 bpm)
+
+5. Gym Hero (Max Pulse) - Score: 28/100
+   - energy (0.93) is close to what you want (0.95)
+```
+
+### Mismatched Genre Expectations Edge Case (genre=classical, mood=euphoric, energy=0.9, tempo=60, likes_acoustic=False)
+
+```
+1. Warehouse 88 (Kilo Frame) - Score: 60/100
+   - matches your favorite mood (euphoric)
+   - energy (0.88) is close to what you want (0.9)
+   - has the non-acoustic energy you tend to like
+
+2. Glass Cathedral (Aria Ninwe) - Score: 52/100
+   - matches your favorite genre (classical)
+   - tempo (58.0 bpm) is close to what you want (60 bpm)
+
+3. Recess (Bubblegum Static) - Score: 35/100
+   - energy (0.8) is close to what you want (0.9)
+   - has the non-acoustic energy you tend to like
+
+4. Gym Hero (Max Pulse) - Score: 34/100
+   - energy (0.93) is close to what you want (0.9)
+   - has the non-acoustic energy you tend to like
+
+5. Storm Runner (Voltline) - Score: 33/100
+   - energy (0.91) is close to what you want (0.9)
+   - has the non-acoustic energy you tend to like
+```
+
+---
+
 ## Experiments You Tried
 
-Use this section to document the experiments you ran. For example:
+Ideas for future experiments:
 
 - What happened when you changed the weight on genre from 2.0 to 0.5
 - What happened when you added tempo or valence to the score
 - How did your system behave for different types of users
+
+### Disabling the mood check
+
+We temporarily commented out the mood-matching logic in both scoring implementations (`Recommender._score()` and `score_song()` in `src/recommender.py`), then re-ran the test suite and `src/main.py` against all six sample profiles to see how rankings changed with `MOOD_WEIGHT` (0.25) effectively removed from every song's score.
+
+**What happened:**
+
+- **Rankings mostly held steady at #1** for profiles where genre/energy/tempo already dominated the top pick (Taste Profile, Conflicted Energy/Mood Edge Case, Mismatched Genre Expectations Edge Case). Mood wasn't the deciding factor for those top spots, so removing it didn't reshuffle the winner.
+- **Scores compressed at the top.** Songs that previously separated themselves with a mood match bonus (Storm Runner's 93/100 dropped to 68/100 on the Taste Profile; Warehouse 88's 64/100 dropped to 39/100 on the High-Energy Pop Fan profile) fell by roughly the full 25-point mood bonus, closing the gap to the runner-up.
+- **Lower ranks clustered even tighter.** With one fewer either/or bonus in play, songs 2 through 5 in several profiles landed within 1-2 points of each other (Deep Intense Rock Fan: ranks 1-5 spanning only 36-37/100), making the tail of the ranking feel almost arbitrary.
+- **The displayed "/100" score became misleading.** `main.py` still multiplies the raw score by 100 without adjusting for the missing weight, so the real achievable ceiling dropped to 75/100 (or 65/100 for profiles with no `target_tempo`), even though the label still implies a 0-100 scale.
+- **Tests still passed (2/2).** `tests/test_recommender.py` doesn't assert on mood specifically, so removing it didn't break any existing test. That's a reminder that passing tests confirm the code runs, not that the recommendations are still meaningful.
+
+**Takeaway:** this change made the recommendations different, not more accurate. There's no ground-truth labeled dataset to validate recommendation quality against; the system's "correctness" is defined by the weights we deliberately chose. Dropping mood just silently removes one of five stated user preferences from consideration rather than fixing an error. This was most visible in the Conflicted Energy/Mood Edge Case profile, which was specifically built so mood and energy/tempo pull in opposite directions. Disabling mood erases that intentional tension by construction. We restored the mood check afterward and confirmed the tests still passed unchanged.
 
 ---
 

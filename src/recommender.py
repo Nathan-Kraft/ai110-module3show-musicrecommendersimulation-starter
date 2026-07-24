@@ -31,14 +31,6 @@ class UserProfile:
     likes_acoustic: bool
     target_tempo: Optional[float] = None
 
-taste_profile = UserProfile(
-    favorite_genre="rock",
-    favorite_mood="intense",   # randomly chosen
-    target_energy=0.65,
-    likes_acoustic=False,      # randomly chosen
-    target_tempo=140,          # randomly chosen (bpm)
-)
-
 class Recommender:
     """
     OOP implementation of the recommendation logic.
