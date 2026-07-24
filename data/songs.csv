@@ -9,3 +9,13 @@ id,title,artist,genre,mood,energy,tempo_bpm,valence,danceability,acousticness
 8,Night Drive Loop,Neon Echo,synthwave,moody,0.75,110,0.49,0.73,0.22
 9,Focus Flow,LoRoom,lofi,focused,0.40,80,0.59,0.60,0.78
 10,Rooftop Lights,Indigo Parade,indie pop,happy,0.76,124,0.81,0.82,0.35
+11,Rust Belt Ghosts,Hollow Creek,folk,melancholic,0.30,68,0.32,0.35,0.88
+12,Fever Dream,Static Cathedral,metal,angry,0.97,168,0.28,0.55,0.03
+13,Habana Nights,Sol y Sombra,latin,romantic,0.68,104,0.79,0.91,0.30
+14,Broken Halo,Marlowe Vance,blues,sad,0.33,64,0.22,0.40,0.75
+15,Warehouse 88,Kilo Frame,house,euphoric,0.88,126,0.86,0.85,0.08
+16,Cornfield Sundown,Dusty Rider,country,nostalgic,0.55,96,0.68,0.57,0.62
+17,Recess,Bubblegum Static,hip hop,playful,0.80,95,0.74,0.90,0.12
+18,Glass Cathedral,Aria Ninwe,classical,peaceful,0.25,58,0.55,0.20,0.95
+19,Riot Gear,Vex Culprit,punk,rebellious,0.95,175,0.44,0.60,0.05
+20,Paper Moons,Wisteria Low,dream pop,dreamy,0.45,84,0.70,0.52,0.68
