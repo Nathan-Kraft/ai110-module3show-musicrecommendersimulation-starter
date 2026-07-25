@@ -70,7 +70,7 @@ Genre outweighs mood so a user's core genre identity still surfaces even when th
 
 - **Genre/mood dominance**: because genre and mood together make up 60% of the score, a user profile with an unusual genre/mood combination (e.g., "ambient" + "intense", which doesn't appear in the catalog) will score every song lower across the board, making recommendations feel flatter and less differentiated for that user.
 - **Catalog imbalance**: the sample catalog has only 10 songs and just 1–2 per genre/mood combination. Users whose taste matches an underrepresented genre (e.g., jazz, ambient) have far fewer candidates to be recommended, regardless of how well the scoring works.
-  - **Observed example**: in the Diverse Profiles Tests above, "Storm Runner" lands in 1st place for several very different profiles (Taste Profile, Conflicted Energy/Mood Edge Case, and near the top for others). This isn't a weighting bug — Storm Runner happens to be one of only two "rock" songs and holds the catalog's highest energy (0.91) and tempo (152 bpm). Any profile wanting high energy, fast tempo, or an "intense" vibe scores it well on `energy_closeness`/`tempo_closeness` alone, and it also picks up genre/mood match bonuses for rock/intense seekers, letting it stack nearly every weighted term at once. With only one song sitting at that extreme, there's no competing track nearby to challenge it. A larger, more evenly distributed catalog would likely reduce this effect.
+  - **Observed example**: in the Diverse Profiles Tests above, "Storm Runner" lands in 1st place for several very different profiles (Taste Profile, Conflicted Energy/Mood Edge Case, and near the top for others). This isn't a weighting bug: Storm Runner happens to be one of only two "rock" songs and holds the catalog's highest energy (0.91) and tempo (152 bpm). Any profile wanting high energy, fast tempo, or an "intense" vibe scores it well on `energy_closeness`/`tempo_closeness` alone, and it also picks up genre/mood match bonuses for rock/intense seekers, letting it stack nearly every weighted term at once. With only one song sitting at that extreme, there's no competing track nearby to challenge it. A larger, more evenly distributed catalog would likely reduce this effect.
 - **Assumed tempo range**: the 40–200 bpm normalization range is a judgment call. If the actual catalog skews narrower (as it does here, ~60–152 bpm), tempo_closeness scores compress toward the high end and the term contributes less differentiation than its 0.10 weight suggests.
 - **No personalization over time**: the system has no memory of past recommendations or feedback, so it will keep suggesting the same top songs to the same user profile indefinitely, and can't learn from what a user actually likes versus what they stated in their profile.
 
@@ -345,15 +345,14 @@ We temporarily commented out the mood-matching logic in both scoring implementat
 
 ## Limitations and Risks
 
-Summarize some limitations of your recommender.
+- **Tiny, unevenly distributed catalog**: only 20 songs across 17 genres and 16 moods, so most genre/mood values have just one matching song. A user's "genre match" is usually a bet on a single track rather than a real cluster of options (see the Storm Runner example above).
+- **All-or-nothing genre/mood matching**: genre and mood use exact string matching with no partial credit for adjacent styles (e.g., "pop" gets zero credit from an "indie pop" or "synthwave" song, even though they're stylistically close). Since these two terms make up 60% of the score, this brittleness has an outsized effect on rankings.
+- **No understanding of the music itself**: the system only reasons about structured metadata (genre, mood, energy, tempo, acousticness). It has no awareness of lyrics, language, vocals vs. instrumental, or era, so it can't distinguish songs on any dimension outside those five fields.
+- **No memory or feedback loop**: each recommendation is computed fresh from a static profile. The system doesn't learn from what a user actually plays, skips, or rates, so it will recommend the same top songs to the same profile forever, and can't adapt over time the way collaborative filtering does.
+- **No diversity control**: recommendations are pure score-ranked with no per-artist or per-genre cap, so a top-5 list can end up dominated by one or two songs/artists that happen to score well, rather than offering a varied set.
+- **Fairness risk**: users whose taste aligns with a well-represented genre/mood get many strong, well-differentiated matches, while users with niche, blended, or descriptively-phrased tastes (e.g., "High-Energy Pop" instead of "pop") get weaker, less discriminating results, purely as an artifact of catalog coverage and string matching, not their taste being less valid.
 
-Examples:
-
-- It only works on a tiny catalog
-- It does not understand lyrics or language
-- It might over favor one genre or mood
-
-You will go deeper on this in your model card.
+See `model_card.md` for a deeper analysis, including specific evaluation runs that surfaced several of these limitations in practice.
 
 ---
 

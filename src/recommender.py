@@ -31,6 +31,51 @@ class UserProfile:
     likes_acoustic: bool
     target_tempo: Optional[float] = None
 
+# Named weight profiles ("ranking strategies"), each summing to 1.0 so a
+# perfect-match song scores exactly 1.0. Every profile scores the same five
+# components (genre, mood, energy, tempo, acoustic) - only how much each one
+# counts changes, so switching strategies re-ranks the same catalog rather
+# than changing what's measured.
+WEIGHT_PROFILES: Dict[str, Dict[str, float]] = {
+    # Our original, finalized Algorithm Recipe (see README "How The System
+    # Works"): genre identity first, mood second, then numeric closeness.
+    "genre_first": {
+        "genre": 0.35,
+        "mood": 0.25,
+        "energy": 0.20,
+        "tempo": 0.10,
+        "acoustic": 0.10,
+    },
+    # Leads with mood instead of genre, for users who care more about how a
+    # song feels than its genre label.
+    "mood_first": {
+        "genre": 0.25,
+        "mood": 0.35,
+        "energy": 0.20,
+        "tempo": 0.10,
+        "acoustic": 0.10,
+    },
+    # Leads with energy/tempo "vibe" and treats genre/mood as secondary -
+    # for users who want a workout-style ranking driven mostly by intensity.
+    "energy_focused": {
+        "genre": 0.20,
+        "mood": 0.20,
+        "energy": 0.35,
+        "tempo": 0.15,
+        "acoustic": 0.10,
+    },
+}
+
+DEFAULT_STRATEGY = "genre_first"
+
+
+def get_weights(strategy: str) -> Dict[str, float]:
+    """Looks up a named weight profile, e.g. get_weights("mood_first")."""
+    if strategy not in WEIGHT_PROFILES:
+        valid = ", ".join(sorted(WEIGHT_PROFILES))
+        raise ValueError(f"Unknown ranking strategy '{strategy}'. Valid options: {valid}")
+    return WEIGHT_PROFILES[strategy]
+
 class Recommender:
     """
     OOP implementation of the recommendation logic.
@@ -46,33 +91,44 @@ class Recommender:
     simple to read and explain on its own, at the cost of ~20 lines of
     repeated logic.
     """
-    def __init__(self, songs: List[Song]):
+    def __init__(self, songs: List[Song], strategy: str = DEFAULT_STRATEGY):
         self.songs = songs
+        self.set_strategy(strategy)
+
+    def set_strategy(self, strategy: str) -> None:
+        """
+        Switches which named weight profile (see WEIGHT_PROFILES) this
+        recommender uses. Affects every _score()/recommend() call that
+        follows, until set_strategy() is called again.
+        """
+        self.strategy = strategy
+        self.weights = get_weights(strategy)
 
     def _score(self, user: UserProfile, song: Song) -> Tuple[float, List[str]]:
         """
-        Scores a single Song against a UserProfile using the Algorithm
-        Recipe (weighted genre match, mood match, and energy/tempo/
-        acousticness closeness). Mirrors score_song()'s logic.
+        Scores a single Song against a UserProfile using the current
+        strategy's weights (weighted genre match, mood match, and
+        energy/tempo/acousticness closeness). Mirrors score_song()'s logic.
 
         Returns (score, reasons) where score is 0-1 and reasons is a
         list of human-readable strings explaining what drove the score.
         """
+        weights = self.weights
         reasons: List[str] = []
         score = 0.0
 
         genre_match = song.genre.lower() == user.favorite_genre.lower()
         if genre_match:
-            score += GENRE_WEIGHT
+            score += weights["genre"]
             reasons.append(f"matches your favorite genre ({song.genre})")
 
         mood_match = song.mood.lower() == user.favorite_mood.lower()
         if mood_match:
-            score += MOOD_WEIGHT
+            score += weights["mood"]
             reasons.append(f"matches your favorite mood ({song.mood})")
 
         energy_closeness = 1 - min(abs(song.energy - user.target_energy), 1.0)
-        score += ENERGY_WEIGHT * energy_closeness
+        score += weights["energy"] * energy_closeness
         if energy_closeness >= 0.85:
             reasons.append(f"energy ({song.energy}) is close to what you want ({user.target_energy})")
 
@@ -80,16 +136,16 @@ class Recommender:
         if user.target_tempo is not None:
             tempo_distance = abs(song.tempo_bpm - user.target_tempo)
             tempo_closeness = 1 - min(tempo_distance / TEMPO_RANGE, 1.0)
-            score += TEMPO_WEIGHT * tempo_closeness
+            score += weights["tempo"] * tempo_closeness
             if tempo_closeness >= 0.85:
                 reasons.append(f"tempo ({song.tempo_bpm} bpm) is close to what you want ({user.target_tempo} bpm)")
 
         if user.likes_acoustic:
-            score += ACOUSTIC_WEIGHT * song.acousticness
+            score += weights["acoustic"] * song.acousticness
             if song.acousticness >= 0.6:
                 reasons.append("has an acoustic feel you tend to like")
         else:
-            score += ACOUSTIC_WEIGHT * (1 - song.acousticness)
+            score += weights["acoustic"] * (1 - song.acousticness)
             if song.acousticness <= 0.3:
                 reasons.append("has the non-acoustic energy you tend to like")
 
@@ -98,17 +154,39 @@ class Recommender:
 
         return score, reasons
 
-    def recommend(self, user: UserProfile, k: int = 5) -> List[Song]:
+    def recommend(self, user: UserProfile, k: int = 5, artist_penalty: float = 0.0) -> List[Song]:
         """
         Returns the top k Song records for this user.
 
         Applies our Ranking Rule: score every song with _score(), sort
         by score descending (tie-break by song id ascending for a
         deterministic order), then take the top k.
+
+        artist_penalty is an opt-in anti-repetition/diversity control
+        (default 0, i.e. off): each time a song is picked, that much is
+        subtracted from the remaining scores of every other song by the
+        same artist, so one artist's several close matches can't crowd
+        out the rest of the top k (a "filter bubble"). The picked
+        songs' original, un-penalized scores are unaffected.
         """
-        scored = [(song, self._score(user, song)[0]) for song in self.songs]
-        scored.sort(key=lambda pair: (-pair[1], pair[0].id))
-        return [song for song, _ in scored[:k]]
+        remaining = [(song, self._score(user, song)[0]) for song in self.songs]
+        if artist_penalty == 0.0:
+            remaining.sort(key=lambda pair: (-pair[1], pair[0].id))
+            return [song for song, _ in remaining[:k]]
+
+        picks: List[Song] = []
+        artist_pick_counts: Dict[str, int] = {}
+        for _ in range(min(k, len(remaining))):
+            remaining.sort(
+                key=lambda pair: (
+                    -(pair[1] - artist_penalty * artist_pick_counts.get(pair[0].artist, 0)),
+                    pair[0].id,
+                )
+            )
+            song, _ = remaining.pop(0)
+            picks.append(song)
+            artist_pick_counts[song.artist] = artist_pick_counts.get(song.artist, 0) + 1
+        return picks
 
     def explain_recommendation(self, user: UserProfile, song: Song) -> str:
         """
@@ -146,14 +224,6 @@ def load_songs(csv_path: str) -> List[Dict]:
             songs.append(song)
     return songs
 
-# Weights from our finalized Algorithm Recipe (see README "How The System
-# Works"). They sum to 1.0 so a perfect-match song scores exactly 1.0.
-GENRE_WEIGHT = 0.35
-MOOD_WEIGHT = 0.25
-ENERGY_WEIGHT = 0.20
-TEMPO_WEIGHT = 0.10
-ACOUSTIC_WEIGHT = 0.10
-
 # tempo_bpm isn't naturally on a 0-1 scale like the other features, so we
 # normalize its distance against an assumed realistic range (ballad to
 # drum & bass) before it can be combined with the other components.
@@ -161,7 +231,7 @@ TEMPO_MIN = 40
 TEMPO_MAX = 200
 TEMPO_RANGE = TEMPO_MAX - TEMPO_MIN
 
-def score_song(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
+def score_song(user_prefs: Dict, song: Dict, strategy: str = DEFAULT_STRATEGY) -> Tuple[float, List[str]]:
     """
     Scores a single song against user preferences.
     Required by recommend_songs() and src/main.py
@@ -175,27 +245,31 @@ def score_song(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
     user_prefs keys used: genre, mood, energy, tempo (optional),
     likes_acoustic (optional, default False).
 
+    `strategy` selects which named weight profile from WEIGHT_PROFILES
+    to score with (e.g. "genre_first", "mood_first", "energy_focused").
+
     Returns (score, reasons) where score is 0-1 and reasons is a list
     of human-readable strings explaining what drove the score, so the
     caller can build an explanation for the user.
     """
+    weights = get_weights(strategy)
     reasons: List[str] = []
     score = 0.0
 
     genre_match = song.get("genre", "").lower() == user_prefs.get("genre", "").lower()
     if genre_match:
-        score += GENRE_WEIGHT
+        score += weights["genre"]
         reasons.append(f"matches your favorite genre ({song.get('genre')})")
 
     mood_match = song.get("mood", "").lower() == user_prefs.get("mood", "").lower()
     if mood_match:
-        score += MOOD_WEIGHT
+        score += weights["mood"]
         reasons.append(f"matches your favorite mood ({song.get('mood')})")
 
     energy = float(song.get("energy", 0.0))
     target_energy = float(user_prefs.get("energy", 0.0))
     energy_closeness = 1 - min(abs(energy - target_energy), 1.0)
-    score += ENERGY_WEIGHT * energy_closeness
+    score += weights["energy"] * energy_closeness
     if energy_closeness >= 0.85:
         reasons.append(f"energy ({energy}) is close to what you want ({target_energy})")
 
@@ -205,18 +279,18 @@ def score_song(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
         tempo_bpm = float(song.get("tempo_bpm", 0.0))
         tempo_distance = abs(tempo_bpm - float(target_tempo))
         tempo_closeness = 1 - min(tempo_distance / TEMPO_RANGE, 1.0)
-        score += TEMPO_WEIGHT * tempo_closeness
+        score += weights["tempo"] * tempo_closeness
         if tempo_closeness >= 0.85:
             reasons.append(f"tempo ({tempo_bpm} bpm) is close to what you want ({target_tempo} bpm)")
 
     acousticness = float(song.get("acousticness", 0.0))
     likes_acoustic = user_prefs.get("likes_acoustic", False)
     if likes_acoustic:
-        score += ACOUSTIC_WEIGHT * acousticness
+        score += weights["acoustic"] * acousticness
         if acousticness >= 0.6:
             reasons.append("has an acoustic feel you tend to like")
     else:
-        score += ACOUSTIC_WEIGHT * (1 - acousticness)
+        score += weights["acoustic"] * (1 - acousticness)
         if acousticness <= 0.3:
             reasons.append("has the non-acoustic energy you tend to like")
 
@@ -225,7 +299,13 @@ def score_song(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
 
     return score, reasons
 
-def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 5) -> List[Tuple[Dict, float, str]]:
+def recommend_songs(
+    user_prefs: Dict,
+    songs: List[Dict],
+    k: int = 5,
+    strategy: str = DEFAULT_STRATEGY,
+    artist_penalty: float = 0.0,
+) -> List[Tuple[Dict, float, str]]:
     """
     Functional implementation of the recommendation logic.
     Required by src/main.py
@@ -235,11 +315,39 @@ def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 5) -> List[Tup
     the top k. Each result includes a human-readable explanation built
     from score_song's reasons, joined with "; " so callers can split the
     string back into individual reasons for display (e.g. as bullets).
-    """
-    scored = [(song, *score_song(user_prefs, song)) for song in songs]
-    scored.sort(key=lambda entry: (-entry[1], entry[0].get("id", 0)))
 
-    return [
-        (song, score, "; ".join(reasons))
-        for song, score, reasons in scored[:k]
-    ]
+    `strategy` selects which named weight profile to score with (see
+    WEIGHT_PROFILES).
+
+    artist_penalty is an opt-in anti-repetition/diversity control
+    (default 0, i.e. off): each time a song is picked, that much is
+    subtracted from the remaining scores of every other song by the
+    same artist, so one artist's several close matches can't crowd out
+    the rest of the top k (a "filter bubble"). The reported score for
+    each pick is still its original, un-penalized score.
+    """
+    scored = [(song, *score_song(user_prefs, song, strategy)) for song in songs]
+
+    if artist_penalty == 0.0:
+        scored.sort(key=lambda entry: (-entry[1], entry[0].get("id", 0)))
+        return [
+            (song, score, "; ".join(reasons))
+            for song, score, reasons in scored[:k]
+        ]
+
+    remaining = scored
+    picks: List[Tuple[Dict, float, List[str]]] = []
+    artist_pick_counts: Dict[str, int] = {}
+    for _ in range(min(k, len(remaining))):
+        remaining.sort(
+            key=lambda entry: (
+                -(entry[1] - artist_penalty * artist_pick_counts.get(entry[0].get("artist"), 0)),
+                entry[0].get("id", 0),
+            )
+        )
+        song, score, reasons = remaining.pop(0)
+        picks.append((song, score, reasons))
+        artist = song.get("artist")
+        artist_pick_counts[artist] = artist_pick_counts.get(artist, 0) + 1
+
+    return [(song, score, "; ".join(reasons)) for song, score, reasons in picks]
